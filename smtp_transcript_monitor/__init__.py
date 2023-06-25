@@ -122,7 +122,7 @@ async def log_monitor(transcript_directory: Path, sleep_duration: float = 30.0) 
                     related_users.add(user_email_name.lower())
                     related_hosts.add(user_email_domain.lower())
 
-                if user.target and (user_target_email := user.email):
+                if user.target and (user_target_email := user.target.email):
                     user_target_email_name, user_target_email_domain = user_target_email.split(sep='@', maxsplit=1)
                     related_users.add(user_target_email_name.lower())
                     related_hosts.add(user_target_email_domain.lower())
