@@ -113,7 +113,9 @@ async def log_monitor(transcript_directory: Path, sleep_duration: float = 30.0) 
                     msg='SMTP traffic was observed.',
                     extra=dict(base) | dict(_ecs_logger_handler_options=dict(merge_extra=True))
                 )
+
+                transcript_file.unlink()
             except:
                 LOG.exception(
-                    msg='An unexpected error occurred when attempting to parse a file.'
+                    msg='An unexpected error occurred when attempting to handle a file.'
                 )
