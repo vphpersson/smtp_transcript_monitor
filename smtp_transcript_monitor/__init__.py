@@ -6,7 +6,8 @@ from pathlib import Path
 from os import stat_result
 from datetime import datetime
 
-from ecs_py import Base, SMTP, SMTPTranscript, Client, Server, Network, Error
+from ecs_py import Base, SMTP, SMTPTranscript, Client, Server, Network, Error, Related, User
+from ecs_tools_py import user_from_smtp_to_from
 from smtp_lib.parse.transcript import parse_transcript, ExtraExchangeData, SMTPExchange
 
 LOG: Final[Logger] = getLogger(__name__)
@@ -21,7 +22,7 @@ async def log_monitor(transcript_directory: Path, sleep_duration: float = 30.0) 
         await asyncio_sleep(delay=sleep_duration)
 
         transcript_file: Path
-        for transcript_file in transcript_directory.glob(pattern='*'):
+        for transcript_file in transcript_directory.glob(pattern='*_*_*_*'):
             try:
                 if not transcript_file.is_file():
                     continue
@@ -109,8 +110,31 @@ async def log_monitor(transcript_directory: Path, sleep_duration: float = 30.0) 
                 if error_type := extra_exchange_data.error_type:
                     base.error.type = error_type
 
+                user: User = user_from_smtp_to_from(ecs_smtp=base.smtp)
+                base.user = user
+                related_users: set[str] = set()
+                related_hosts: set[str] = set()
+
+                if user_email := user.email:
+                    user_email_name, user_email_domain = user_email.split(sep='@', maxsplit=1)
+                    related_users.add(user_email_name.lower())
+                    related_hosts.add(user_email_domain.lower())
+
+                if user.target and (user_target_email := user.email):
+                    user_target_email_name, user_target_email_domain = user_target_email.split(sep='@', maxsplit=1)
+                    related_users.add(user_target_email_name.lower())
+                    related_hosts.add(user_target_email_domain.lower())
+
+                if ehlo := base.smtp.ehlo:
+                    related_hosts.add(ehlo)
+
+                base.related = Related(
+                    user=list(related_users) or None,
+                    hosts=list(related_hosts) or None
+                )
+
                 LOG.info(
-                    msg='SMTP traffic was observed.',
+                    msg='An SMTP transcript was parsed.',
                     extra=dict(base) | dict(_ecs_logger_handler_options=dict(merge_extra=True))
                 )
 
