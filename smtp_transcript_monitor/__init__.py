@@ -6,7 +6,7 @@ from pathlib import Path
 from os import stat_result
 from datetime import datetime
 
-from ecs_py import Base, SMTP, SMTPTranscript, Client, Server, Network, Error, Related, User
+from ecs_py import Base, SMTP, SMTPTranscript, Client, Server, Network, Error, Related, User, Event
 from ecs_tools_py import user_from_smtp_to_from
 from smtp_lib.parse.transcript import parse_transcript, ExtraExchangeData, SMTPExchange
 
@@ -28,11 +28,9 @@ async def log_monitor(transcript_directory: Path, sleep_duration: float = 30.0) 
                     continue
 
                 transcript_file_stat_result: stat_result = transcript_file.stat(follow_symlinks=False)
+                last_modified: datetime = datetime.fromtimestamp(transcript_file_stat_result.st_mtime).astimezone()
 
-                time_difference_seconds: int = (
-                        datetime.now().astimezone()
-                        - datetime.fromtimestamp(transcript_file_stat_result.st_mtime).astimezone()
-                ).seconds
+                time_difference_seconds: int = (datetime.now().astimezone() - last_modified).seconds
 
                 if not (time_difference_seconds >= int(sleep_duration)):
                     continue
@@ -45,6 +43,10 @@ async def log_monitor(transcript_directory: Path, sleep_duration: float = 30.0) 
                         port=int(client_port)
                     ),
                     error=Error(),
+                    event=Event(
+                        start=datetime.fromtimestamp(transcript_file_stat_result.st_birthtime).astimezone(),
+                        end=last_modified
+                    ),
                     server=Server(
                         address=server_address,
                         port=int(server_port)
