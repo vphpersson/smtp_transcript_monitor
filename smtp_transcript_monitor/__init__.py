@@ -44,7 +44,7 @@ async def log_monitor(transcript_directory: Path, sleep_duration: float = 30.0) 
                     ),
                     error=Error(),
                     event=Event(
-                        start=datetime.fromtimestamp(transcript_file_stat_result.st_birthtime).astimezone(),
+                        # start=datetime.fromtimestamp(transcript_file_stat_result.st_birthtime).astimezone(),
                         end=last_modified
                     ),
                     server=Server(
