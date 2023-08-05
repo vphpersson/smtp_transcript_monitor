@@ -1,4 +1,7 @@
 from option_parser import OptionParser
+from ecs_tools_py import make_log_action
+
+from smtp_transcript_monitor import LOG
 
 
 class SMTPTranscriptOptionParser(OptionParser):
@@ -22,8 +25,9 @@ class SMTPTranscriptOptionParser(OptionParser):
         )
 
         self.add_argument(
-            '--log-path',
-            help='The path where to store logs.'
+            '--log',
+            help='A log specifier specifying how logging is to be performed.',
+            action=make_log_action(event_provider='smtp_transcript_monitor', log=LOG)
         )
 
         self.add_argument(

@@ -6,7 +6,7 @@ from pathlib import Path
 from os import stat_result
 from datetime import datetime
 
-from ecs_py import Base, SMTP, SMTPTranscript, Client, Server, Network, Error, Related, User, Event
+from ecs_py import Base, User
 from ecs_tools_py import user_from_smtp_to_from
 from smtp_lib.parse.transcript import parse_transcript, ExtraExchangeData, SMTPExchange
 
@@ -37,70 +37,59 @@ async def log_monitor(transcript_directory: Path, sleep_duration: float = 30.0) 
 
                 server_address, server_port, client_address, client_port = transcript_file.name.split('_')
 
-                base = Base(
-                    client=Client(
-                        address=client_address,
-                        port=int(client_port)
-                    ),
-                    error=Error(),
-                    event=Event(
-                        # start=datetime.fromtimestamp(transcript_file_stat_result.st_birthtime).astimezone(),
-                        end=last_modified
-                    ),
-                    server=Server(
-                        address=server_address,
-                        port=int(server_port)
-                    ),
-                    network=Network(
-                        protocol='smtp',
-                        transport='tcp'
-                    ),
-                    smtp=SMTP()
-                )
-
                 transcript_data: str = transcript_file.read_text()
-
-                base.smtp.transcript = SMTPTranscript(original=transcript_data)
 
                 exchange: list[SMTPExchange]
                 extra_exchange_data: ExtraExchangeData | None
                 exchange, extra_exchange_data = parse_transcript(transcript_data=transcript_data)
 
-                base.smtp.transcript.exchange = exchange
-
-                base.smtp.ehlo = next(
-                    (
-                        entry.request.arguments_string
-                        for entry in exchange
-                        if entry.request and entry.request.command.upper() == 'EHLO'
-                    ),
-                    None
-                )
-
-                base.smtp.mail_from = next(
-                    (
-                        _MAIL_FROM_PATTERN.match(string=entry.request.arguments_string).group(1)
-                        for entry in exchange
-                        if (
-                            entry.request
-                            and entry.request.command.upper() == 'MAIL'
-                            and entry.request.arguments_string.upper().startswith('FROM:')
-                        )
-                    ),
-                    None
-                )
-
-                base.smtp.rcpt_to = next(
-                    (
-                        _RCPT_TO_PATTERN.match(string=entry.request.arguments_string).group(1)
-                        for entry in exchange
-                        if (
-                            entry.request
-                            and entry.request.command.upper() == 'RCPT'
-                            and entry.request.arguments_string.upper().startswith('TO:')
-                        )
-                    ),
-                    None
+                base = Base()
+                # TODO: `event.start` would be nice, based on the file's creation time, but that timestamp does not
+                #   seem to be readily accessible.
+                base.assign(
+                    value_dict={
+                        'client.address': client_address,
+                        'client.port': client_port,
+                        'event.end': last_modified,
+                        'server.address': server_address,
+                        'server.port': int(server_port),
+                        'smtp.ehlo': next(
+                            (
+                                entry.request.arguments_string
+                                for entry in exchange
+                                if entry.request and entry.request.command.upper() == 'EHLO'
+                            ),
+                            None
+                        ),
+                        'smtp.mail_from': next(
+                            (
+                                pattern_match.group(1)
+                                for entry in exchange
+                                if (
+                                    entry.request
+                                    and entry.request.command.upper() == 'MAIL'
+                                    and entry.request.arguments_string.upper().startswith('FROM:')
+                                ) and (pattern_match := _MAIL_FROM_PATTERN.match(string=entry.request.arguments_string))
+                            ),
+                            None
+                        ),
+                        'smtp.rcpt_to': next(
+                            (
+                                pattern_match.group(1)
+                                for entry in exchange
+                                if (
+                                    entry.request
+                                    and entry.request.command.upper() == 'RCPT'
+                                    and entry.request.arguments_string.upper().startswith('TO:')
+                                ) and (pattern_match := _RCPT_TO_PATTERN.match(string=entry.request.arguments_string))
+                            ),
+                            None
+                        ),
+                        'smtp.transcript.exchange': exchange,
+                        'smtp.transcript.original': transcript_data,
+                        'network.protocol': 'smtp',
+                        'network.transport': 'tcp',
+                    }
                 )
 
                 if error_message := extra_exchange_data.error_message:
@@ -112,27 +101,31 @@ async def log_monitor(transcript_directory: Path, sleep_duration: float = 30.0) 
                 if error_type := extra_exchange_data.error_type:
                     base.error.type = error_type
 
-                user: User = user_from_smtp_to_from(ecs_smtp=base.smtp)
-                base.user = user
                 related_users: set[str] = set()
                 related_hosts: set[str] = set()
 
-                if user_email := user.email:
-                    user_email_name, user_email_domain = user_email.split(sep='@', maxsplit=1)
-                    related_users.add(user_email_name.lower())
-                    related_hosts.add(user_email_domain.lower())
+                if base.smtp:
+                    user: User = user_from_smtp_to_from(ecs_smtp=base.smtp)
+                    base.user = user
 
-                if user.target and (user_target_email := user.target.email):
-                    user_target_email_name, user_target_email_domain = user_target_email.split(sep='@', maxsplit=1)
-                    related_users.add(user_target_email_name.lower())
-                    related_hosts.add(user_target_email_domain.lower())
+                    if user_email := user.email:
+                        user_email_name, user_email_domain = user_email.split(sep='@', maxsplit=1)
+                        related_users.add(user_email_name.lower())
+                        related_hosts.add(user_email_domain.lower())
 
-                if ehlo := base.smtp.ehlo:
+                    if user.target and (user_target_email := user.target.email):
+                        user_target_email_name, user_target_email_domain = user_target_email.split(sep='@', maxsplit=1)
+                        related_users.add(user_target_email_name.lower())
+                        related_hosts.add(user_target_email_domain.lower())
+
+                if ehlo := base.get_field_value(field_name='smtp.ehlo'):
                     related_hosts.add(ehlo)
 
-                base.related = Related(
-                    user=list(related_users) or None,
-                    hosts=list(related_hosts) or None
+                base.assign(
+                    value_dict={
+                        'related.user': list(related_users) or None,
+                        'related.hosts': list(related_hosts) or None
+                    }
                 )
 
                 LOG.info(
