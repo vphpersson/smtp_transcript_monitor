@@ -145,7 +145,7 @@ async def log_monitor(transcript_directory: Path, sleep_duration: float = 30.0) 
                 )
 
                 LOG.info(
-                    msg='An SMTP transcript was parsed.',
+                    msg='smtp traffic was observed',
                     extra=dict(base) | dict(_ecs_logger_handler_options=dict(merge_extra=True))
                 )
 
