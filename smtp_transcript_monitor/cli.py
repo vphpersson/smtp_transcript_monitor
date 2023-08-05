@@ -7,7 +7,6 @@ from smtp_transcript_monitor import LOG
 class SMTPTranscriptOptionParser(OptionParser):
     class Namespace:
         transcript_directory: str | None
-        log_path: str | None
         sleep_time: float
 
     def __init__(self, *args, **kwargs):
