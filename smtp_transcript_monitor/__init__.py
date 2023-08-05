@@ -5,6 +5,7 @@ from re import compile as re_compile, Pattern as RePattern, IGNORECASE as RE_IGN
 from pathlib import Path
 from os import stat_result
 from datetime import datetime
+from subprocess import run as subprocess_run, PIPE as SUBPROCESS_PIPE
 
 from ecs_py import Base, User
 from ecs_tools_py import user_from_smtp_to_from
@@ -15,6 +16,24 @@ LOG: Final[Logger] = getLogger(__name__)
 
 _MAIL_FROM_PATTERN: Final[RePattern] = re_compile(pattern=r'^FROM:<([^>]+)>.*$', flags=RE_IGNORECASE)
 _RCPT_TO_PATTERN: Final[RePattern] = re_compile(pattern=r'^TO:<([^>]+)>.*$', flags=RE_IGNORECASE)
+_BIRTH_PATTERN: Final[RePattern] = re_compile(
+    pattern=r'^\s*Birth: (.+)... ([^ ]+)$'
+)
+
+
+def get_creation_time(file_path: str) -> datetime:
+    stat_process = subprocess_run(
+        ['stat', file_path],
+        stdout=SUBPROCESS_PIPE,
+        text=True
+    )
+    return next(
+        datetime.strptime(
+            f'{match.group(1)} {match.group(2)}',
+            '%Y-%m-%d %H:%M:%S.%f %z'
+        )
+        for line in stat_process.stdout.splitlines() if (match := _BIRTH_PATTERN.search(string=line))
+    )
 
 
 async def log_monitor(transcript_directory: Path, sleep_duration: float = 30.0) -> NoReturn:
@@ -42,12 +61,11 @@ async def log_monitor(transcript_directory: Path, sleep_duration: float = 30.0) 
                 exchange, extra_exchange_data = parse_transcript(transcript_data=transcript_data)
 
                 base = Base()
-                # TODO: `event.start` would be nice, based on the file's creation time, but that timestamp does not
-                #   seem to be readily accessible.
                 base.assign(
                     value_dict={
                         'client.address': client_address,
                         'client.port': client_port,
+                        'event.start': get_creation_time(file_path=str(transcript_file)),
                         'event.end': last_modified,
                         'server.address': server_address,
                         'server.port': int(server_port),
