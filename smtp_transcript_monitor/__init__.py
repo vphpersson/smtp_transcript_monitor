@@ -19,8 +19,6 @@ _RCPT_TO_PATTERN: Final[RePattern] = re_compile(pattern=r'^TO:<([^>]+)>.*$', fla
 
 async def log_monitor(transcript_directory: Path, sleep_duration: float = 30.0) -> NoReturn:
     while True:
-        await asyncio_sleep(delay=sleep_duration)
-
         transcript_file: Path
         for transcript_file in transcript_directory.glob(pattern='*_*_*_*'):
             try:
@@ -93,13 +91,13 @@ async def log_monitor(transcript_directory: Path, sleep_duration: float = 30.0) 
                 )
 
                 if error_message := extra_exchange_data.error_message:
-                    base.error.message = error_message
+                    base.set_field_value(field_name='error.message', value=error_message)
 
                 if error_code := extra_exchange_data.error_code:
-                    base.error.code = error_code
+                    base.set_field_value(field_name='error.code', value=error_code)
 
                 if error_type := extra_exchange_data.error_type:
-                    base.error.type = error_type
+                    base.set_field_value(field_name='error.type', value=error_type)
 
                 related_users: set[str] = set()
                 related_hosts: set[str] = set()
@@ -138,3 +136,5 @@ async def log_monitor(transcript_directory: Path, sleep_duration: float = 30.0) 
                 LOG.exception(
                     msg='An unexpected error occurred when attempting to handle a file.'
                 )
+
+        await asyncio_sleep(delay=sleep_duration)
